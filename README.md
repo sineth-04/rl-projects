@@ -21,6 +21,19 @@ A custom 2D top-down parking simulation built from scratch using Pygame, trained
 - In-app model loader and RL/human mode toggle
 - Training monitored with **TensorBoard** — tracked reward curves, episode length, and policy metrics across multiple model iterations
 
+**To train:**
+```bash
+python train.py
+```
+**To visualise training:**
+```bash
+tensorboard --logdir logs/
+```
+**To run the environment:**
+```bash
+python parking_env.py
+```
+
 **Stack:** Python, Pygame, Stable-Baselines3, NumPy, Gymnasium, TensorBoard
 
 ---
