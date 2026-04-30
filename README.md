@@ -17,7 +17,7 @@ A custom 2D top-down parking simulation built from scratch using Pygame, trained
   - Stage 3 & 4 — Reverse parking (straight and diagonal)
   - Stage 5 — Parallel parking
 -  Realistic Ackermann steering physics — car turns in proper arcs based on steering angle and wheelbase
-- 12-ray sensor system for obstacle detection
+- 12-ray sensor system for obstacle detection (simulating sensors in cars)
 - In-app model loader and RL/human mode toggle
 - Training monitored with **TensorBoard** — tracked reward curves, episode length, and policy metrics across multiple model iterations
 
