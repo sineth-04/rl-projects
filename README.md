@@ -19,8 +19,9 @@ A custom 2D top-down parking simulation built from scratch using Pygame, trained
 - Kinematic bicycle model for realistic Ackermann steering
 - 12-ray sensor system for obstacle detection
 - In-app model loader and RL/human mode toggle
+- Training monitored with **TensorBoard** — tracked reward curves, episode length, and policy metrics across multiple model iterations
 
-**Stack:** Python, Pygame, Stable-Baselines3, NumPy, Gymnasium
+**Stack:** Python, Pygame, Stable-Baselines3, NumPy, Gymnasium, TensorBoard
 
 ---
 
