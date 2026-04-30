@@ -342,21 +342,56 @@ class ParkingEnv:
     # ── World ─────────────────────────────────────────────────────────────────
     def _build_world(self):
         segs = []
+        # Screen boundary walls
         segs += [((0,0),(SCREEN_W,0)),((SCREEN_W,0),(SCREEN_W,SCREEN_H)),
                  ((SCREEN_W,SCREEN_H),(0,SCREEN_H)),((0,SCREEN_H),(0,0))]
-        for bx,by in BAYS:
-            segs += [((bx,by),(bx,by+BAY_H)),((bx+BAY_W,by),(bx+BAY_W,by+BAY_H))]
-        segs += [((0,BAY_ROW_Y+BAY_H),(SCREEN_W,BAY_ROW_Y+BAY_H))]
-        for idx in OBSTACLE_IDXS:
-            bx,by = BAYS[idx]
-            cx,cy = bx+BAY_W/2, by+BAY_H/2
-            segs += segments_from_rect(cx, cy, CAR_W+2, CAR_H+2)
+
+        if self.curriculum_stage < 4:
+            # ── Stages 1-4: vertical bay layout ──────────────────────────────
+            for bx,by in BAYS:
+                segs += [((bx,by),(bx,by+BAY_H)),((bx+BAY_W,by),(bx+BAY_W,by+BAY_H))]
+            segs += [((0,BAY_ROW_Y+BAY_H),(SCREEN_W,BAY_ROW_Y+BAY_H))]
+            for idx in OBSTACLE_IDXS:
+                bx,by = BAYS[idx]
+                cx,cy = bx+BAY_W/2, by+BAY_H/2
+                segs += segments_from_rect(cx, cy, CAR_W+2, CAR_H+2)
+            tbx,tby = BAYS[TARGET_IDX]
+            self.target_rect  = pygame.Rect(tbx, tby, BAY_W, BAY_H)
+            self.target_cx    = tbx + BAY_W/2
+            self.target_cy    = tby + BAY_H/2
+            self.target_angle = math.pi
+
+        else:
+            # ── Stage 5: horizontal parallel parking layout ───────────────────
+            # Parallel bays run along the yellow lane line (BAY_ROW_Y)
+            # Bay is rotated: width=BAY_H(90), height=BAY_W(50) — long side horizontal
+            PB_W  = 90   # parallel bay width  (along road)
+            PB_H  = 50   # parallel bay height (into kerb)
+            PB_Y  = BAY_ROW_Y   # top of parallel bays (just below lane line)
+            PB_CX = SCREEN_W // 2   # centre bay x
+
+            # Target bay
+            self.target_cx    = float(PB_CX)
+            self.target_cy    = float(PB_Y + PB_H / 2)
+            self.target_rect  = pygame.Rect(PB_CX - PB_W//2, PB_Y, PB_W, PB_H)
+            self.target_angle = math.pi / 2   # car must face right (horizontal)
+
+            # Obstacle cars in bays on either side
+            for off in (-PB_W - 6, PB_W + 6):
+                ocx = PB_CX + off
+                ocy = PB_Y + PB_H / 2
+                segs += segments_from_rect(ocx, ocy, CAR_H+2, CAR_W+2)  # rotated
+
+            # Kerb wall below bays
+            segs += [((0, PB_Y + PB_H),(SCREEN_W, PB_Y + PB_H))]
+
+            # Store for render
+            self._pb_w  = PB_W
+            self._pb_h  = PB_H
+            self._pb_y  = PB_Y
+            self._pb_cx = PB_CX
+
         self.world_segs = segs
-        tbx,tby = BAYS[TARGET_IDX]
-        self.target_rect  = pygame.Rect(tbx, tby, BAY_W, BAY_H)
-        self.target_cx    = tbx + BAY_W/2
-        self.target_cy    = tby + BAY_H/2
-        self.target_angle = math.pi
 
     def _build_ui(self):
         bx = SCREEN_W - 215
@@ -369,6 +404,15 @@ class ParkingEnv:
         stage = CURRICULUM[self.curriculum_stage]
         cx    = self.target_cx
         cy    = self.target_cy
+
+        if self.curriculum_stage == 4:
+            # Stage 5 — parallel parking
+            # Spawn car horizontal, near the lane line, offset to the right of the bay
+            sx = float(self.target_cx + np.random.uniform(120, 250))
+            sx = float(np.clip(sx, 100, SCREEN_W - 100))
+            sy = float(self.target_cy + np.random.uniform(-15, 15))
+            sa = math.pi / 2   # facing right (horizontal), same as target
+            return sx, sy, sa
 
         if stage["fixed_offset"] is not None:
             # Fixed spawn: exact centre above the bay, no randomness at all
@@ -391,6 +435,7 @@ class ParkingEnv:
 
     # ── Gym API ───────────────────────────────────────────────────────────────
     def reset(self):
+        self._build_world()   # rebuild so layout matches current stage
         sx, sy, sa   = self._spawn_position()
         self.agent   = Car(sx, sy, sa)
         self.steps   = 0
@@ -529,20 +574,51 @@ class ParkingEnv:
 
         pygame.draw.line(s, COL_LANE, (0, BAY_ROW_Y-8), (SCREEN_W, BAY_ROW_Y-8), 2)
 
-        for i,(bx,by) in enumerate(BAYS):
-            if i == TARGET_IDX:
-                surf = pygame.Surface((BAY_W, BAY_H), pygame.SRCALPHA)
-                surf.fill((*COL_BAY_TARGET, 45))
-                s.blit(surf, (bx, by))
-                pygame.draw.rect(s, COL_BAY_TARGET, (bx,by,BAY_W,BAY_H), 2)
-                lbl = self.font_s.render("P", True, COL_BAY_TARGET)
-                s.blit(lbl, (bx+BAY_W//2-5, by+BAY_H//2-7))
-            elif i in OBSTACLE_IDXS:
-                cx,cy = bx+BAY_W//2, by+BAY_H//2
-                pygame.draw.polygon(s, COL_CAR_PARKED, rect_corners(cx,cy,CAR_W,CAR_H,0))
-                pygame.draw.polygon(s, (60,65,75), rect_corners(cx,cy,CAR_W,CAR_H,0), 1)
-            else:
-                pygame.draw.rect(s, COL_BAY_IDLE, (bx,by,BAY_W,BAY_H), 1)
+        if self.curriculum_stage < 4:
+            # ── Stages 1-4: vertical bays ─────────────────────────────────────
+            for i,(bx,by) in enumerate(BAYS):
+                if i == TARGET_IDX:
+                    surf = pygame.Surface((BAY_W, BAY_H), pygame.SRCALPHA)
+                    surf.fill((*COL_BAY_TARGET, 45))
+                    s.blit(surf, (bx, by))
+                    pygame.draw.rect(s, COL_BAY_TARGET, (bx,by,BAY_W,BAY_H), 2)
+                    lbl = self.font_s.render("P", True, COL_BAY_TARGET)
+                    s.blit(lbl, (bx+BAY_W//2-5, by+BAY_H//2-7))
+                elif i in OBSTACLE_IDXS:
+                    cx,cy = bx+BAY_W//2, by+BAY_H//2
+                    pygame.draw.polygon(s, COL_CAR_PARKED, rect_corners(cx,cy,CAR_W,CAR_H,0))
+                    pygame.draw.polygon(s, (60,65,75), rect_corners(cx,cy,CAR_W,CAR_H,0), 1)
+                else:
+                    pygame.draw.rect(s, COL_BAY_IDLE, (bx,by,BAY_W,BAY_H), 1)
+        else:
+            # ── Stage 5: horizontal parallel bays ─────────────────────────────
+            PB_W  = self._pb_w
+            PB_H  = self._pb_h
+            PB_Y  = self._pb_y
+            PB_CX = self._pb_cx
+
+            # Target bay (horizontal green rectangle)
+            surf = pygame.Surface((PB_W, PB_H), pygame.SRCALPHA)
+            surf.fill((*COL_BAY_TARGET, 45))
+            s.blit(surf, (PB_CX - PB_W//2, PB_Y))
+            pygame.draw.rect(s, COL_BAY_TARGET, (PB_CX-PB_W//2, PB_Y, PB_W, PB_H), 2)
+            lbl = self.font_s.render("P", True, COL_BAY_TARGET)
+            s.blit(lbl, (PB_CX-5, PB_Y+PB_H//2-7))
+
+            # Obstacle cars on either side (drawn horizontal)
+            for off in (-PB_W - 6, PB_W + 6):
+                ocx = PB_CX + off
+                ocy = PB_Y + PB_H // 2
+                # Rotated 90deg: swap CAR_W/CAR_H so car lies flat
+                pygame.draw.polygon(s, COL_CAR_PARKED,
+                                    rect_corners(ocx, ocy, CAR_H, CAR_W, 0))
+                pygame.draw.polygon(s, (60,65,75),
+                                    rect_corners(ocx, ocy, CAR_H, CAR_W, 0), 1)
+
+            # Empty bay outlines either side of obstacles
+            for off in (-3*(PB_W+6), 3*(PB_W+6)):
+                pygame.draw.rect(s, COL_BAY_IDLE,
+                                 (PB_CX+off-PB_W//2, PB_Y, PB_W, PB_H), 1)
 
         # Rays
         a = self.agent
